@@ -1,10 +1,12 @@
 package app.snob.twitterapiclone.service
 
+import app.snob.twitterapiclone.dto.LikeRequest
 import app.snob.twitterapiclone.dto.PostRequest
 import app.snob.twitterapiclone.dto.PostResponse
-import app.snob.twitterapiclone.dto.UserRequest
-import app.snob.twitterapiclone.dto.UserResponse
+import app.snob.twitterapiclone.model.Comment
+import app.snob.twitterapiclone.model.Feed
 import app.snob.twitterapiclone.model.Post
+import app.snob.twitterapiclone.repository.CommentRepository
 import app.snob.twitterapiclone.repository.PostRepository
 import app.snob.twitterapiclone.repository.UserRepository
 import org.springframework.stereotype.Service
@@ -15,6 +17,7 @@ import java.util.stream.Collectors
 class PostService {
     PostRepository postRepository;
     UserRepository userRepository;
+    CommentRepository commentRepository;
 
     void savePost(PostRequest postRequest) {
         def user = userRepository.findById(postRequest.userId)
@@ -63,19 +66,71 @@ class PostService {
         def subscriber = userRepository.findById(userId)
                 .orElseThrow { new RuntimeException("User not found with ID: $userId") }
 
-        // Initialize an empty list to store the subscriber's feed
-        def userFeed = subscriber.subscriptions
+        def subscriptions = subscriber.subscriptions
+        def postsFeed = [] as List<Post>
+        subscriptions.each { user ->
+            postsFeed.addAll(postRepository.findAllByUser(user))
+        }
+        postsFeed.sort {it.createdAt}
 
-        // Iterate through the subscriber's subscriptions
-        subscriber.subscriptions.each { subscribedUser ->
-            // Retrieve posts from the subscribed user
-            def postsFromSubscribedUser = subscribedUser.posts
+        return postsFeed
+    }
 
-            // Add the posts to the subscriber's feed
-            userFeed.addAll(postsFromSubscribedUser)
+    void addLikeToPost(LikeRequest likeRequest) {
+        def post = postRepository.findById(likeRequest.postId)
+                .orElseThrow { new RuntimeException("Post not found with ID: $likeRequest.postId") }
+
+        if (!post.getLikedByIds().contains(likeRequest.userId)) {
+            post.getLikedByIds().add(likeRequest.userId)
+
+            postRepository.save(post)
+        }
+    }
+
+    void removeLikeFromPost(LikeRequest likeRequest) {
+        def post = postRepository.findById(likeRequest.postId)
+                .orElseThrow { new RuntimeException("Post not found with ID: $likeRequest.postId") }
+
+        post.getLikedByIds().remove(likeRequest.userId)
+
+        postRepository.save(post)
+    }
+
+    Feed getUserFeed(String userId) {
+        def subscriber = userRepository.findById(userId)
+                .orElseThrow { new RuntimeException("User not found with ID: $userId") }
+
+        def subscriptions = subscriber.subscriptions
+
+        def subscribedPosts = [] as List<Post>
+        def likedPosts = [] as List<Post>
+        def userComments = [] as List<Comment>
+
+        subscriptions.each { user ->
+            subscribedPosts.addAll(postRepository.findAllByUser(user))
+
+            likedPosts.addAll(subscriber.favoritePosts)
+
+            userComments.addAll(commentRepository.findAllByUser(user))
         }
 
-        return userFeed
+        def combinedPosts = (subscribedPosts + likedPosts).unique()
+
+        combinedPosts.sort { it.createdAt }
+
+        return new Feed(combinedPosts, userComments)
+    }
+
+    Feed getAnotherUserFeed(String userId) {
+        def user = userRepository.findById(userId)
+                .orElseThrow { new RuntimeException("User not found with ID: $userId") }
+
+        def likedPosts = user.favoritePosts
+        def userComments = commentRepository.findAllByUser(user)
+
+        likedPosts.sort { it.createdAt }
+
+        return new Feed(likedPosts, userComments)
     }
 
     static PostResponse mapToPostResponse(Post post) {
