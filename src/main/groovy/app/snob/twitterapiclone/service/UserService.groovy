@@ -11,8 +11,13 @@ import java.util.stream.Collectors
 
 @Service
 class UserService {
-    UserRepository userRepository;
-    PostRepository postRepository;
+    UserRepository userRepository
+    PostRepository postRepository
+
+    UserService(UserRepository userRepository, PostRepository postRepository) {
+        this.userRepository = userRepository
+        this.postRepository = postRepository
+    }
 
     void saveUser(UserRequest userRequest) {
         def user = User.builder()
@@ -20,14 +25,14 @@ class UserService {
                 .email(userRequest.email)
                 .firstname(userRequest.firstname)
                 .lastname(userRequest.lastname)
-                .build();
-        userRepository.save(user);
+                .build()
+        userRepository.save(user)
     }
 
     List<UserResponse> getAllUsers() {
-        userRepository.findAll().collect(Collectors.toList() as Closure<Object>).stream()
+        userRepository.findAll().stream()
                 .map(this.&mapToUserResponse)
-                .toList() as List<UserResponse>
+                .collect(Collectors.toList())
     }
 
     UserResponse getUserById(String id) {
@@ -58,7 +63,7 @@ class UserService {
 
     void deleteUserById(String id) {
         if (userRepository.existsById(id)) {
-            userRepository.deleteById(id);
+            userRepository.deleteById(id)
         } else {
             throw new RuntimeException("User with ID " + id + " not found") as Throwable
         }

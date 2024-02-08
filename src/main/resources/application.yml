@@ -1,0 +1,16 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: twitter-api-clone
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: twitter-api-clone
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /v3/swagger-ui.html

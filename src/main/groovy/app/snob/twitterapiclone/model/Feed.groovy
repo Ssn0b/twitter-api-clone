@@ -1,10 +1,13 @@
 package app.snob.twitterapiclone.model
 
-class Feed {
-    List<Post> posts
-    List<Comment> userComments
+import app.snob.twitterapiclone.dto.CommentResponse
+import app.snob.twitterapiclone.dto.PostResponse
 
-    Feed(List<Post> posts, List<Comment> userComments) {
+class Feed {
+    List<PostResponse> posts
+    List<CommentResponse> userComments
+
+    Feed(List<PostResponse> posts, List<CommentResponse> userComments) {
         this.posts = posts
         this.userComments = userComments
     }

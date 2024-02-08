@@ -1,5 +1,6 @@
 package app.snob.twitterapiclone.service
 
+import app.snob.twitterapiclone.dto.CommentResponse
 import app.snob.twitterapiclone.dto.LikeRequest
 import app.snob.twitterapiclone.dto.PostRequest
 import app.snob.twitterapiclone.dto.PostResponse
@@ -11,29 +12,36 @@ import app.snob.twitterapiclone.repository.PostRepository
 import app.snob.twitterapiclone.repository.UserRepository
 import org.springframework.stereotype.Service
 
+import java.time.LocalDateTime
 import java.util.stream.Collectors
 
 @Service
 class PostService {
-    PostRepository postRepository;
-    UserRepository userRepository;
-    CommentRepository commentRepository;
+    PostRepository postRepository
+    UserRepository userRepository
+    CommentRepository commentRepository
+
+    PostService(UserRepository userRepository, PostRepository postRepository, CommentRepository commentRepository) {
+        this.userRepository = userRepository
+        this.postRepository = postRepository
+        this.commentRepository = commentRepository
+    }
 
     void savePost(PostRequest postRequest) {
         def user = userRepository.findById(postRequest.userId)
                 .orElseThrow { new RuntimeException("User not found with ID: $postRequest.userId") }
         def post = Post.builder()
                 .content(postRequest.content)
-                .createdAt(postRequest.createdAt)
+                .createdAt(LocalDateTime.now())
                 .user(user)
-                .build();
-        postRepository.save(post);
+                .build()
+        postRepository.save(post)
     }
 
     List<PostResponse> getAllPosts() {
-        postRepository.findAll().collect(Collectors.toList() as Closure<Object>).stream()
+        postRepository.findAll().stream()
                 .map(this.&mapToPostResponse)
-                .toList() as List<PostResponse>
+                .collect(Collectors.toList())
     }
 
     PostResponse getPostById(String id) {
@@ -45,9 +53,6 @@ class PostService {
     void editPost(String id, PostRequest postUpdateRequest) {
         def post = postRepository.findById(id)
                 .orElseThrow { new RuntimeException("Post not found with ID: $id") }
-        if (postUpdateRequest.createdAt) {
-            post.setCreatedAt(postUpdateRequest.createdAt)
-        }
         if (postUpdateRequest.content) {
             post.setContent(postUpdateRequest.content)
         }
@@ -56,20 +61,22 @@ class PostService {
 
     void deletePostById(String id) {
         if (postRepository.existsById(id)) {
-            postRepository.deleteById(id);
+            postRepository.deleteById(id)
         } else {
             throw new RuntimeException("Post with ID " + id + " not found") as Throwable
         }
     }
 
-    List<Post> getAllPostsByUserSubscribe(String userId) {
+    List<PostResponse> getAllPostsByUserSubscribe(String userId) {
         def subscriber = userRepository.findById(userId)
                 .orElseThrow { new RuntimeException("User not found with ID: $userId") }
 
         def subscriptions = subscriber.subscriptions
-        def postsFeed = [] as List<Post>
+        def postsFeed = [] as List<PostResponse>
         subscriptions.each { user ->
-            postsFeed.addAll(postRepository.findAllByUser(user))
+            postsFeed.addAll(postRepository.findAllByUser(user).stream()
+                    .map(this.&mapToPostResponse)
+                    .collect(Collectors.toList()))
         }
         postsFeed.sort {it.createdAt}
 
@@ -102,19 +109,25 @@ class PostService {
 
         def subscriptions = subscriber.subscriptions
 
-        def subscribedPosts = [] as List<Post>
-        def likedPosts = [] as List<Post>
-        def userComments = [] as List<Comment>
+        def subscribedPosts = [] as List<PostResponse>
+        def favoritePosts = [] as List<PostResponse>
+        def userComments = [] as List<CommentResponse>
 
         subscriptions.each { user ->
-            subscribedPosts.addAll(postRepository.findAllByUser(user))
+            subscribedPosts.addAll(postRepository.findAllByUser(user).stream()
+                    .map(this.&mapToPostResponse)
+                    .collect(Collectors.toList()))
 
-            likedPosts.addAll(subscriber.favoritePosts)
+            favoritePosts.addAll(subscriber.favoritePosts.stream()
+                    .map(this.&mapToPostResponse)
+                    .collect(Collectors.toList()))
 
-            userComments.addAll(commentRepository.findAllByUser(user))
+            userComments.addAll(commentRepository.findAllByUser(user).stream()
+                    .map(this.&mapToCommentResponse)
+                    .collect(Collectors.toList()))
         }
 
-        def combinedPosts = (subscribedPosts + likedPosts).unique()
+        def combinedPosts = (subscribedPosts + favoritePosts).unique()
 
         combinedPosts.sort { it.createdAt }
 
@@ -125,20 +138,40 @@ class PostService {
         def user = userRepository.findById(userId)
                 .orElseThrow { new RuntimeException("User not found with ID: $userId") }
 
-        def likedPosts = user.favoritePosts
-        def userComments = commentRepository.findAllByUser(user)
+        def favoritePosts = [] as List<PostResponse>
+        def userComments = [] as List<CommentResponse>
 
-        likedPosts.sort { it.createdAt }
+        favoritePosts.addAll(user.favoritePosts.stream()
+                .map(this.&mapToPostResponse)
+                .collect(Collectors.toList()))
 
-        return new Feed(likedPosts, userComments)
+        userComments.addAll(commentRepository.findAllByUser(user).stream()
+                .map(this.&mapToCommentResponse)
+                .collect(Collectors.toList()))
+
+        favoritePosts.sort { it.createdAt }
+
+        Feed feed = new Feed(favoritePosts, userComments)
+
+        return feed
     }
 
     static PostResponse mapToPostResponse(Post post) {
         PostResponse.builder()
                 .id(post.id)
-                .user(post.getUser())
+                .userId(post.getUser().id)
                 .content(post.content)
                 .createdAt(post.createdAt)
+                .build()
+    }
+
+    static CommentResponse mapToCommentResponse(Comment comment) {
+        CommentResponse.builder()
+                .id(comment.id)
+                .userId(comment.user.id)
+                .postId(comment.post.id)
+                .content(comment.content)
+                .createdAt(comment.createdAt)
                 .build()
     }
 }
